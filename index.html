@@ -1,107 +1,167 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>정규분포 Z 확률 계산기</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-  body {
-    font-family: sans-serif;
-    margin: 20px;
-    background: #f9fafb;
-  }
-  h1 {
-    text-align: center;
-  }
-  .controls {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    margin-bottom: 20px;
-  }
-  canvas {
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  }
-  #result {
-    text-align: center;
-    font-size: 1.2rem;
-    margin-top: 10px;
-  }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>정규분포 인터랙티브 (곡선 + 클릭 선택)</title>
+  <style>
+    :root{--bg:#f6f8fb;--card:#ffffff;--accent:#2563eb;--muted:#64748b}
+    *{box-sizing:border-box;font-family:Inter,system-ui,Segoe UI,Roboto,'Noto Sans',Arial}
+    body{margin:0;background:linear-gradient(180deg,var(--bg),#ffffff);color:#0f1724}
+    .wrap{max-width:900px;margin:36px auto;padding:18px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+    h1{font-size:20px;margin:0;color:var(--accent)}
+    .controls{display:flex;gap:10px;align-items:center}
+    .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:0 6px 20px rgba(15,23,36,0.06)}
+    label{font-size:13px;color:var(--muted);display:flex;flex-direction:column}
+    input[type=number]{width:110px;padding:8px;border-radius:8px;border:1px solid rgba(2,6,23,0.06);font-size:14px}
+    button{background:var(--accent);color:white;border:none;padding:8px 12px;border-radius:8px;cursor:pointer}
+    button.ghost{background:transparent;color:var(--accent);border:1px solid rgba(37,99,235,0.12)}
+    canvas{width:100%;height:420px;border-radius:10px;background:linear-gradient(180deg,#ffffff,#fbfdff)}
+    .info{margin-top:12px;display:flex;gap:12px;align-items:center}
+    .pill{background:rgba(37,99,235,0.08);color:var(--accent);padding:8px 12px;border-radius:999px;font-weight:600}
+    .small{color:var(--muted);font-size:13px}
+    footer{margin-top:16px;color:var(--muted);font-size:13px}
+  </style>
 </head>
 <body>
-<h1>정규분포 Z 확률 계산기</h1>
-<div class="controls">
-  <label>Z 최소: <input type="number" id="zMin" step="0.1" value="-1"></label>
-  <label>Z 최대: <input type="number" id="zMax" step="0.1" value="1"></label>
-  <button onclick="calculateArea()">계산</button>
-</div>
-<canvas id="chart" width="600" height="400"></canvas>
-<p id="result"></p>
+  <div class="wrap">
+    <header>
+      <h1>정규분포 Z 확률 (곡선 인터랙티브)</h1>
+      <div class="small">곡선을 클릭해 구간을 선택하세요. 선택 영역이 자동으로 음영 처리됩니다.</div>
+    </header>
+
+    <div class="card">
+      <div style="display:flex;gap:18px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+        <div class="controls">
+          <label>Z 최소<input id="zMin" type="number" step="0.01" value="-1"></label>
+          <label>Z 최대<input id="zMax" type="number" step="0.01" value="1"></label>
+          <label style="align-items:center">정밀도 (Simpson n)<input id="n" type="number" min="10" max="200000" step="1" value="1000"></label>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="compute">계산</button>
+          <button id="reset" class="ghost">초기화</button>
+        </div>
+      </div>
+
+      <div style="margin-top:12px">
+        <canvas id="plot"></canvas>
+      </div>
+
+      <div class="info">
+        <div class="pill" id="prob">P = -</div>
+        <div class="small">선택: <span id="selRange">-</span></div>
+        <div class="small">오차(절대): <span id="err">-</span></div>
+      </div>
+
+      <footer>클릭 동작: 첫 클릭 → Zmin 설정, 두 번째 클릭 → Zmax 설정. 다시 클릭하면 재설정됩니다.</footer>
+    </div>
+  </div>
 
 <script>
-function normalPDF(x) {
-  return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI);
+// PDF, CDF, Simpson
+function normalPDF(x){return Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI);} 
+function erf(x){ // Abramowitz-Stegun
+  const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
+  const sign = x<0?-1:1; x = Math.abs(x);
+  const t = 1/(1+p*x);
+  const y = 1 - ((((a5*t + a4)*t + a3)*t + a2)*t + a1)*t*Math.exp(-x*x);
+  return sign*y;
 }
+function normalCDF(x){return 0.5*(1+erf(x/Math.sqrt(2)));}
 
-function simpsonsRule(f, a, b, n = 1000) {
-  if (n % 2 !== 0) n++;
-  const h = (b - a) / n;
-  let sum = f(a) + f(b);
-  for (let i = 1; i < n; i++) {
-    const x = a + i * h;
-    sum += f(x) * (i % 2 === 0 ? 2 : 4);
+function simpson(f,a,b,n){ if(n%2===1) n++; const h=(b-a)/n; let s=f(a)+f(b); for(let i=1;i<n;i++){ const x=a+i*h; s += f(x)*(i%2===0?2:4);} return s*h/3; }
+
+// Canvas drawing
+const canvas = document.getElementById('plot'); const ctx = canvas.getContext('2d');
+function resize(){ canvas.width = canvas.clientWidth * devicePixelRatio; canvas.height = canvas.clientHeight * devicePixelRatio; ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0); draw(); }
+window.addEventListener('resize', resize);
+
+// state
+let zMin = parseFloat(document.getElementById('zMin').value);
+let zMax = parseFloat(document.getElementById('zMax').value);
+let n = parseInt(document.getElementById('n').value,10);
+let clicks = []; // clicked z positions
+let samples = []; // {x,y}
+const domain = 4; // -domain .. +domain
+
+function prepareSamples(){ samples = []; const step = 0.01; for(let x=-domain; x<=domain; x+=step){ samples.push({x:x,y:normalPDF(x)}); } }
+
+function xToPx(x){ const W = canvas.clientWidth; return ( (x + domain) / (2*domain) ) * W; }
+function yToPx(y){ const H = canvas.clientHeight; const padding = 36; const maxY = normalPDF(0); return H - padding - (y / maxY) * (H - padding*2); }
+
+function draw(){
+  const W = canvas.clientWidth; const H = canvas.clientHeight;
+  ctx.clearRect(0,0,W,H);
+  // background grid
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle = 'rgba(2,6,23,0.04)'; ctx.lineWidth = 1;
+  for(let i=0;i<6;i++){ const yy = H*(i/6); ctx.beginPath(); ctx.moveTo(0,yy); ctx.lineTo(W,yy); ctx.stroke(); }
+  // axis line
+  ctx.strokeStyle = 'rgba(2,6,23,0.08)'; ctx.beginPath(); ctx.moveTo(0,H-30); ctx.lineTo(W,H-30); ctx.stroke();
+
+  // curve
+  ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = '#2563eb';
+  for(let i=0;i<samples.length;i++){ const p = samples[i]; const px=xToPx(p.x); const py=yToPx(p.y); if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py); }
+  ctx.stroke();
+
+  // shade selected area
+  if(clicks.length==2){ const a = Math.min(clicks[0],clicks[1]); const b = Math.max(clicks[0],clicks[1]);
+    // build polygon along curve between a and b then down to baseline
+    ctx.beginPath();
+    // move to first point on baseline
+    ctx.moveTo(xToPx(a), H-30);
+    // along curve
+    for(let x=a; x<=b+1e-9; x+=0.01){ const y=normalPDF(x); ctx.lineTo(xToPx(x), yToPx(y)); }
+    // down to baseline
+    ctx.lineTo(xToPx(b), H-30);
+    ctx.closePath(); ctx.fillStyle='rgba(37,99,235,0.18)'; ctx.fill();
+
+    // border line on shaded part
+    ctx.beginPath(); for(let x=a;x<=b+1e-9;x+=0.01){ const y=normalPDF(x); if(x===a) ctx.moveTo(xToPx(x), yToPx(y)); else ctx.lineTo(xToPx(x), yToPx(y)); }
+    ctx.strokeStyle='#1e40af'; ctx.lineWidth=1.5; ctx.stroke();
   }
-  return (h / 3) * sum;
+
+  // ticks and labels
+  ctx.fillStyle='#475569'; ctx.font='12px sans-serif';
+  for(let t=-domain; t<=domain; t++){ const px=xToPx(t); ctx.beginPath(); ctx.moveTo(px, H-34); ctx.lineTo(px, H-26); ctx.strokeStyle='rgba(2,6,23,0.06)'; ctx.stroke(); ctx.fillText(t.toFixed(0), px-8, H-6); }
+
+  // markers for clicks
+  for(let i=0;i<clicks.length;i++){ const z=clicks[i]; const px=xToPx(z); const py=yToPx(normalPDF(z)); ctx.beginPath(); ctx.fillStyle=i===0? '#0ea5b7':'#ef4444'; ctx.arc(px,py,5,0,Math.PI*2); ctx.fill(); }
 }
 
-function calculateArea() {
-  const zMin = parseFloat(document.getElementById('zMin').value);
-  const zMax = parseFloat(document.getElementById('zMax').value);
-  const area = simpsonsRule(normalPDF, zMin, zMax);
-  document.getElementById('result').textContent = `P(${zMin} < Z < ${zMax}) ≈ ${area.toFixed(4)}`;
-  drawChart(zMin, zMax);
+// interactions: click to set z values
+canvas.addEventListener('click',(e)=>{
+  const rect = canvas.getBoundingClientRect(); const cx = (e.clientX-rect.left)/rect.width; const z = -domain + cx*(2*domain);
+  if(clicks.length<2){ clicks.push(Number(z.toFixed(3))); }
+  else { clicks = [Number(z.toFixed(3))]; }
+  // update inputs when two clicks available
+  if(clicks.length===1){ document.getElementById('zMin').value = clicks[0]; document.getElementById('zMax').value = clicks[0]; }
+  if(clicks.length===2){ const a=Math.min(clicks[0],clicks[1]); const b=Math.max(clicks[0],clicks[1]); document.getElementById('zMin').value=a; document.getElementById('zMax').value=b; computeAndDisplay(); }
+  draw();
+});
+
+// compute and display
+function computeAndDisplay(){ zMin = parseFloat(document.getElementById('zMin').value); zMax = parseFloat(document.getElementById('zMax').value); n = parseInt(document.getElementById('n').value,10); if(zMax<zMin){ const t=zMin; zMin=zMax; zMax=t; }
+  const approx = simpson(normalPDF, zMin, zMax, n);
+  const exact = normalCDF(zMax)-normalCDF(zMin);
+  const err = Math.abs(approx-exact);
+  document.getElementById('prob').textContent = `P(${zMin} < Z < ${zMax}) ≈ ${approx.toFixed(6)}`;
+  document.getElementById('selRange').textContent = `${zMin.toFixed(3)} ~ ${zMax.toFixed(3)}`;
+  document.getElementById('err').textContent = err.toExponential(3);
+  draw();
 }
 
-let chart;
-function drawChart(zMin, zMax) {
-  const xs = [], ys = [];
-  const step = 0.05;
-  for (let x = -4; x <= 4; x += step) {
-    xs.push(x);
-    ys.push(normalPDF(x));
-  }
-  const bgColors = ys.map((y, i) => (xs[i] >= zMin && xs[i] <= zMax ? 'rgba(54, 162, 235, 0.4)' : 'rgba(200,200,200,0.2)'));
+// inputs & buttons
+document.getElementById('compute').addEventListener('click',()=>{ clicks = [parseFloat(document.getElementById('zMin').value), parseFloat(document.getElementById('zMax').value)]; computeAndDisplay(); });
+document.getElementById('reset').addEventListener('click',()=>{ clicks=[]; document.getElementById('zMin').value='-1'; document.getElementById('zMax').value='1'; document.getElementById('prob').textContent='P = -'; document.getElementById('selRange').textContent='-'; document.getElementById('err').textContent='-'; draw(); });
 
-  const ctx = document.getElementById('chart').getContext('2d');
-  if (chart) chart.destroy();
-  chart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: xs,
-      datasets: [{
-        label: '정규분포 (μ=0, σ=1)',
-        data: ys,
-        backgroundColor: bgColors,
-        borderColor: 'blue',
-        borderWidth: 1
-      }]
-    },
-    options: {
-      scales: {
-        x: { title: { display: true, text: 'Z 값' } },
-        y: { title: { display: true, text: '확률밀도' } }
-      },
-      plugins: { legend: { display: false } }
-    }
-  });
-}
+document.getElementById('zMin').addEventListener('input',()=>{});
 
-drawChart(-1, 1);
-calculateArea();
+document.getElementById('zMax').addEventListener('input',()=>{});
+
+// init
+prepareSamples(); resize();
 </script>
 </body>
 </html>
