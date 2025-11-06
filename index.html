@@ -1,421 +1,107 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>경사하강법 시뮬레이션</title>
-  <style>
-    :root{--bg:#0f1724;--panel:#0b1220;--accent:#7dd3fc;--muted:#9ca3af;--card:#0b1320}
-    *{box-sizing:border-box;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,"Noto Sans",Helvetica,Arial}
-    html,body{height:100%;margin:0;background:linear-gradient(180deg,#071129,#051026);color:#e6eef6}
-    .app{display:grid;grid-template-columns:430px 1fr;gap:18px;padding:20px;height:100vh}
-    .panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;padding:16px;box-shadow:0 6px 24px rgba(2,6,23,0.6)}
-    h1{font-size:18px;margin:0 0 8px}
-    .controls{display:flex;flex-direction:column;gap:12px}
-    label{font-size:13px;color:var(--muted)}
-    input[type=range]{width:100%}
-    .row{display:flex;gap:8px;align-items:center}
-    .btn{background:var(--accent);border:none;color:#052026;padding:8px 12px;border-radius:8px;cursor:pointer}
-    .btn.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
-    .small{font-size:13px;color:var(--muted)}
-    .canvas-wrap{display:grid;grid-template-columns:1fr 320px;gap:12px;height:100%}
-    #mainCanvas{width:100%;height:100%;background:linear-gradient(180deg,#081223,#04111a);border-radius:12px}
-    #lossCanvas{width:100%;height:100%;background:linear-gradient(180deg,#06131c,#021018);border-radius:12px}
-    .info{display:flex;gap:8px;flex-wrap:wrap}
-    .chip{background:rgba(255,255,255,0.02);padding:6px 8px;border-radius:8px;font-size:13px}
-    .func-list{display:flex;flex-direction:column;gap:6px}
-    .func-list button{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:8px;border-radius:8px;color:var(--muted);cursor:pointer;text-align:left}
-    footer{font-size:12px;color:var(--muted);margin-top:8px}
-    .hint{font-size:12px;color:#bcd7ee}
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>정규분포 Z 확률 계산기</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body {
+    font-family: sans-serif;
+    margin: 20px;
+    background: #f9fafb;
+  }
+  h1 {
+    text-align: center;
+  }
+  .controls {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  canvas {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  #result {
+    text-align: center;
+    font-size: 1.2rem;
+    margin-top: 10px;
+  }
+</style>
 </head>
 <body>
-  <div class="app">
-    <aside class="panel">
-      <h1>경사하강법 시뮬레이션</h1>
-      <div class="small hint">캔버스 클릭으로 시작점 설정, Play로 애니메이션 실행, Step으로 한 번씩 이동합니다.</div>
-      <div style="height:12px"></div>
-      <div class="controls">
-        <div>
-          <label>함수 선택</label>
-          <div class="func-list">
-            <button id="fn-quadratic">단순 이차함수 (f(x,y)=x² + 2y²)</button>
-            <button id="fn-rosen">Rosenbrock (f(x,y)=(1-x)² + 100(y-x²)²)</button>
-            <button id="fn-himmel">Himmelblau (다중 최소값)</button>
-          </div>
-        </div>
+<h1>정규분포 Z 확률 계산기</h1>
+<div class="controls">
+  <label>Z 최소: <input type="number" id="zMin" step="0.1" value="-1"></label>
+  <label>Z 최대: <input type="number" id="zMax" step="0.1" value="1"></label>
+  <button onclick="calculateArea()">계산</button>
+</div>
+<canvas id="chart" width="600" height="400"></canvas>
+<p id="result"></p>
 
-        <div>
-          <label>학습률 (learning rate) <span id="lrVal">0.05</span></label>
-          <input id="lr" type="range" min="0.001" max="1" step="0.001" value="0.05">
-        </div>
+<script>
+function normalPDF(x) {
+  return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI);
+}
 
-        <div>
-          <label>감소 모멘텀 (momentum) <span id="momVal">0.00</span></label>
-          <input id="momentum" type="range" min="0" max="0.99" step="0.01" value="0.0">
-        </div>
+function simpsonsRule(f, a, b, n = 1000) {
+  if (n % 2 !== 0) n++;
+  const h = (b - a) / n;
+  let sum = f(a) + f(b);
+  for (let i = 1; i < n; i++) {
+    const x = a + i * h;
+    sum += f(x) * (i % 2 === 0 ? 2 : 4);
+  }
+  return (h / 3) * sum;
+}
 
-        <div>
-          <label>스탭 제한 (max iterations)</label>
-          <input id="maxIter" type="number" min="1" max="20000" value="2000" style="width:100%">
-        </div>
+function calculateArea() {
+  const zMin = parseFloat(document.getElementById('zMin').value);
+  const zMax = parseFloat(document.getElementById('zMax').value);
+  const area = simpsonsRule(normalPDF, zMin, zMax);
+  document.getElementById('result').textContent = `P(${zMin} < Z < ${zMax}) ≈ ${area.toFixed(4)}`;
+  drawChart(zMin, zMax);
+}
 
-        <div class="row">
-          <button class="btn" id="play">Play</button>
-          <button class="btn secondary" id="step">Step</button>
-          <button class="btn secondary" id="reset">Reset</button>
-        </div>
+let chart;
+function drawChart(zMin, zMax) {
+  const xs = [], ys = [];
+  const step = 0.05;
+  for (let x = -4; x <= 4; x += step) {
+    xs.push(x);
+    ys.push(normalPDF(x));
+  }
+  const bgColors = ys.map((y, i) => (xs[i] >= zMin && xs[i] <= zMax ? 'rgba(54, 162, 235, 0.4)' : 'rgba(200,200,200,0.2)'));
 
-        <div class="row info">
-          <div class="chip">반복: <span id="iter">0</span></div>
-          <div class="chip">현재 손실: <span id="loss">-</span></div>
-          <div class="chip">좌표: <span id="coord">-</span></div>
-        </div>
-
-        <div>
-          <label>시작점</label>
-          <div class="row"><input id="startX" type="number" step="0.1" value="-2" style="width:100%"><input id="startY" type="number" step="0.1" value="2" style="width:100%"></div>
-        </div>
-
-        <div>
-          <label>궤적 색상 / 포인트 수</label>
-          <div class="row"><input id="trailSize" type="number" min="10" max="5000" value="600" style="width:60%"><div class="small">(보존점)</div></div>
-        </div>
-
-        <footer>만들기: ChatGPT · 간단한 시뮬레이션용 — 학습/시각화 목적으로 사용하세요.</footer>
-      </div>
-    </aside>
-
-    <main class="panel canvas-wrap">
-      <canvas id="mainCanvas"></canvas>
-
-      <div style="display:flex;flex-direction:column;gap:12px">
-        <div style="flex:1;display:flex;flex-direction:column;gap:8px">
-          <div style="font-size:14px">손실 함수 등고선</div>
-          <canvas id="lossCanvas"></canvas>
-        </div>
-        <div style="height:220px;display:flex;flex-direction:column">
-          <div style="font-size:14px">Loss vs Iteration</div>
-          <canvas id="chart" style="flex:1;border-radius:10px;background:linear-gradient(180deg,#07131a,#021018)"></canvas>
-        </div>
-      </div>
-    </main>
-  </div>
-
-  <script>
-    // --- 기초 셋업 ---
-    const main = document.getElementById('mainCanvas');
-    const lossCv = document.getElementById('lossCanvas');
-    const chartCv = document.getElementById('chart');
-    const ctx = main.getContext('2d');
-    const lctx = lossCv.getContext('2d');
-    const cctx = chartCv.getContext('2d');
-
-    function resize() {
-      main.width = main.clientWidth * devicePixelRatio;
-      main.height = main.clientHeight * devicePixelRatio;
-      ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
-
-      lossCv.width = lossCv.clientWidth * devicePixelRatio;
-      lossCv.height = lossCv.clientHeight * devicePixelRatio;
-      lctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
-
-      chartCv.width = chartCv.clientWidth * devicePixelRatio;
-      chartCv.height = chartCv.clientHeight * devicePixelRatio;
-      cctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
-
-      drawGrid();
-      redrawLossCanvas();
-      drawChart();
-    }
-    window.addEventListener('resize', resize);
-
-    // --- 함수들 정의 및 기울기 ---
-    const funcs = {
-      quadratic: {
-        name: 'Quadratic',
-        f: (x,y)=> x*x + 2*y*y,
-        grad: (x,y)=> [2*x,4*y],
-        domain: 4
+  const ctx = document.getElementById('chart').getContext('2d');
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: xs,
+      datasets: [{
+        label: '정규분포 (μ=0, σ=1)',
+        data: ys,
+        backgroundColor: bgColors,
+        borderColor: 'blue',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      scales: {
+        x: { title: { display: true, text: 'Z 값' } },
+        y: { title: { display: true, text: '확률밀도' } }
       },
-      rosen: {
-        name: 'Rosenbrock',
-        f: (x,y)=> Math.pow(1-x,2) + 100*Math.pow(y - x*x,2),
-        grad: (x,y)=> {
-          const gx = -2*(1-x) - 400*x*(y - x*x);
-          const gy = 200*(y - x*x);
-          return [gx,gy];
-        },
-        domain: 2
-      },
-      himmel: {
-        name: 'Himmelblau',
-        f: (x,y)=> Math.pow(x*x + y -11,2) + Math.pow(x + y*y -7,2),
-        grad: (x,y)=> {
-          const gx = 4*x*(x*x + y -11) + 2*(x + y*y -7);
-          const gy = 2*(x*x + y -11) + 4*y*(x + y*y -7);
-          return [gx,gy];
-        },
-        domain: 6
-      }
-    };
-
-    // 상태 변수
-    let currentFn = funcs.quadratic;
-    let lr = parseFloat(document.getElementById('lr').value);
-    let momentum = parseFloat(document.getElementById('momentum').value);
-    let maxIter = parseInt(document.getElementById('maxIter').value,10);
-    let iter = 0;
-    let playing = false;
-    let x= -2, y=2;
-    let vx=0, vy=0; // momentum velocity
-    let trail = [];
-    let losses = [];
-
-    // 컨트롤 참조
-    const lrEl = document.getElementById('lr');
-    const momEl = document.getElementById('momentum');
-    const iterEl = document.getElementById('iter');
-    const lossEl = document.getElementById('loss');
-    const coordEl = document.getElementById('coord');
-    const lrVal = document.getElementById('lrVal');
-    const momVal = document.getElementById('momVal');
-    const trailSizeEl = document.getElementById('trailSize');
-
-    // 이벤트 연결
-    document.getElementById('fn-quadratic').addEventListener('click', ()=> switchFn('quadratic'));
-    document.getElementById('fn-rosen').addEventListener('click', ()=> switchFn('rosen'));
-    document.getElementById('fn-himmel').addEventListener('click', ()=> switchFn('himmel'));
-    document.getElementById('play').addEventListener('click', ()=> {playing = !playing; document.getElementById('play').textContent = playing? 'Pause':'Play'; if(playing) animate();});
-    document.getElementById('step').addEventListener('click', stepOnce);
-    document.getElementById('reset').addEventListener('click', resetAll);
-    lrEl.addEventListener('input', ()=>{lr = parseFloat(lrEl.value); lrVal.textContent = lr;});
-    momEl.addEventListener('input', ()=>{momentum = parseFloat(momEl.value); momVal.textContent = momentum.toFixed(2);});
-    document.getElementById('startX').addEventListener('input', ()=>{x = parseFloat(document.getElementById('startX').value); resetTrail();});
-    document.getElementById('startY').addEventListener('input', ()=>{y = parseFloat(document.getElementById('startY').value); resetTrail();});
-    document.getElementById('maxIter').addEventListener('change', ()=>{maxIter = parseInt(document.getElementById('maxIter').value,10)});
-
-    // 캔버스 클릭으로 시작점 지정
-    main.addEventListener('click', (e)=>{
-      const rect = main.getBoundingClientRect();
-      const cx = (e.clientX - rect.left)/rect.width*2 -1; // -1..1
-      const cy = (e.clientY - rect.top)/rect.height*2 -1;
-      // 화면 좌표 -> 함수 공간
-      const d = currentFn.domain;
-      const fx = cx * d;
-      const fy = -cy * d;
-      x = fx; y = fy;
-      document.getElementById('startX').value = x.toFixed(3);
-      document.getElementById('startY').value = y.toFixed(3);
-      resetTrail();
-      drawGrid();
-    });
-
-    function switchFn(name){
-      currentFn = funcs[name];
-      resetAll();
+      plugins: { legend: { display: false } }
     }
+  });
+}
 
-    function resetTrail(){
-      trail = [];
-      losses = [];
-      vx=0;vy=0;iter=0;playing=false;document.getElementById('play').textContent='Play';
-      updateInfo(); drawGrid(); drawChart(); redrawLossCanvas();
-    }
-
-    function resetAll(){
-      x = parseFloat(document.getElementById('startX').value);
-      y = parseFloat(document.getElementById('startY').value);
-      resetTrail();
-    }
-
-    function stepOnce(){
-      if(iter >= maxIter) {playing=false; document.getElementById('play').textContent='Play'; return}
-      const g = currentFn.grad(x,y);
-      // momentum update
-      vx = momentum*vx + (1-momentum)*g[0];
-      vy = momentum*vy + (1-momentum)*g[1];
-      x -= lr * vx;
-      y -= lr * vy;
-      iter++;
-      const L = currentFn.f(x,y);
-      losses.push(L);
-      trail.push([x,y]);
-      if(trail.length > parseInt(trailSizeEl.value,10)) trail.shift();
-      updateInfo(); drawGrid(); drawChart(); redrawLossCanvas();
-    }
-
-    function animate(){
-      if(!playing) return;
-      stepOnce();
-      if(iter < maxIter) requestAnimationFrame(animate);
-      else { playing=false; document.getElementById('play').textContent='Play' }
-    }
-
-    function updateInfo(){
-      iterEl.textContent = iter;
-      const L = currentFn.f(x,y);
-      lossEl.textContent = L.toFixed(6);
-      coordEl.textContent = `(${x.toFixed(4)}, ${y.toFixed(4)})`;
-    }
-
-    // 그리기 도우미: 등고선 격자
-    function drawGrid(){
-      const W = main.clientWidth; const H = main.clientHeight;
-      ctx.clearRect(0,0,W,H);
-      // draw contour background by sampling
-      const d = currentFn.domain;
-      const cols = 200; const rows = Math.round(cols * H / W);
-      const image = ctx.createImageData(cols, rows);
-      let minv = Infinity, maxv = -Infinity;
-      const vals = new Float32Array(cols*rows);
-      for(let j=0;j<rows;j++){
-        for(let i=0;i<cols;i++){
-          const sx = (i/(cols-1))*2 -1;
-          const sy = (j/(rows-1))*2 -1;
-          const fx = sx * d;
-          const fy = -sy * d;
-          const v = currentFn.f(fx,fy);
-          vals[j*cols + i] = v;
-          if(v < minv) minv = v;
-          if(v > maxv) maxv = v;
-        }
-      }
-      // normalize and draw as subtle color map
-      for(let j=0;j<rows;j++){
-        for(let i=0;i<cols;i++){
-          const idx = j*cols + i;
-          const v = (vals[idx] - minv) / (maxv - minv + 1e-12);
-          // color map: dark blue -> cyan
-          const r = Math.floor(10 + v*60);
-          const g = Math.floor(20 + v*130);
-          const b = Math.floor(30 + v*160);
-          const px = (j*cols + i)*4;
-          image.data[px+0] = r; image.data[px+1] = g; image.data[px+2] = b; image.data[px+3] = 255;
-        }
-      }
-      // scale image to canvas
-      const off = document.createElement('canvas');
-      off.width = cols; off.height = rows;
-      off.getContext('2d').putImageData(image,0,0);
-      ctx.drawImage(off,0,0,W,H);
-
-      // draw contour lines: simple approach by drawing thin strokes at several threshold levels
-      ctx.save();
-      ctx.globalAlpha = 0.12;
-      for(let t=1;t<=9;t++){
-        const th = t/10;
-        ctx.beginPath();
-        for(let j=0;j<rows;j++){
-          for(let i=0;i<cols;i++){
-            const v = vals[j*cols + i];
-            const norm = (v - minv) / (maxv - minv + 1e-12);
-            if(norm < th && Math.random() < 0.001){
-              const px = i/cols*W; const py = j/rows*H;
-              ctx.moveTo(px,py);
-              ctx.arc(px,py,0.6,0,Math.PI*2);
-            }
-          }
-        }
-        ctx.fillStyle = 'rgba(255,255,255,0.04)';
-        ctx.fill();
-      }
-      ctx.restore();
-
-      // draw trail
-      if(trail.length){
-        ctx.save();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#7dd3fc';
-        ctx.beginPath();
-        for(let i=0;i<trail.length;i++){
-          const p = trail[i];
-          const sx = (p[0]/d +1)/2 * W;
-          const sy = (1 - (p[1]/d +1)/2) * H;
-          if(i===0) ctx.moveTo(sx,sy); else ctx.lineTo(sx,sy);
-        }
-        ctx.stroke();
-        // draw latest point
-        const last = trail[trail.length-1];
-        const lx = (last[0]/d +1)/2 * W;
-        const ly = (1 - (last[1]/d +1)/2) * H;
-        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(lx,ly,6,0,Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#052026'; ctx.beginPath(); ctx.arc(lx,ly,3,0,Math.PI*2); ctx.fill();
-        ctx.restore();
-      }
-
-      // draw axes at center
-      ctx.save();
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
-      ctx.restore();
-    }
-
-    function redrawLossCanvas(){
-      const W = lossCv.clientWidth; const H = lossCv.clientHeight;
-      lctx.clearRect(0,0,W,H);
-      // draw labels
-      lctx.save();
-      lctx.font = '12px sans-serif'; lctx.fillStyle = '#9fbfd8';
-      lctx.fillText(currentFn.name, 8, 16);
-      lctx.restore();
-      // quick drawing of a zoomed region function surface cross-section
-      const d = currentFn.domain;
-      const cols = 200; const rows = 200;
-      const image = lctx.createImageData(cols, rows);
-      let minv=Infinity,maxv=-Infinity; const vals = new Float32Array(cols*rows);
-      for(let j=0;j<rows;j++){
-        for(let i=0;i<cols;i++){
-          const sx = (i/(cols-1))*2 -1;
-          const sy = (j/(rows-1))*2 -1;
-          const fx = sx * d; const fy = -sy * d;
-          const v = currentFn.f(fx,fy);
-          vals[j*cols+i]=v; if(v<minv)minv=v; if(v>maxv)maxv=v;
-        }
-      }
-      for(let j=0;j<rows;j++){
-        for(let i=0;i<cols;i++){
-          const idx = j*cols+i; const v=(vals[idx]-minv)/(maxv-minv+1e-12);
-          const r = Math.floor(10 + v*50); const g = Math.floor(20 + v*110); const b = Math.floor(30 + v*140);
-          const px=(j*cols+i)*4; image.data[px+0]=r; image.data[px+1]=g; image.data[px+2]=b; image.data[px+3]=255;
-        }
-      }
-      const off = document.createElement('canvas'); off.width=cols; off.height=rows; off.getContext('2d').putImageData(image,0,0);
-      lctx.drawImage(off,0,24,W,H-24);
-      // draw current position marker
-      const sx = (x/d +1)/2 * W; const sy = (1 - (y/d +1)/2) * (H-24) + 24;
-      lctx.fillStyle = '#fff'; lctx.beginPath(); lctx.arc(sx,sy,6,0,Math.PI*2); lctx.fill();
-    }
-
-    // Chart: loss vs iter
-    function drawChart(){
-      const W = chartCv.clientWidth; const H = chartCv.clientHeight;
-      cctx.clearRect(0,0,W,H);
-      if(losses.length === 0) return;
-      const N = losses.length; const maxN = Math.max(...losses); const minN = Math.min(...losses);
-      const pad = 24;
-      cctx.beginPath();
-      for(let i=0;i<N;i++){
-        const px = pad + (i/(Math.max(N-1,1)))*(W-2*pad);
-        const norm = (losses[i]-minN)/(maxN-minN+1e-12);
-        const py = H - pad - norm*(H-2*pad);
-        if(i===0) cctx.moveTo(px,py); else cctx.lineTo(px,py);
-      }
-      cctx.strokeStyle = '#7dd3fc'; cctx.lineWidth = 2; cctx.stroke();
-      // axes
-      cctx.strokeStyle = 'rgba(255,255,255,0.08)'; cctx.lineWidth=1; cctx.beginPath(); cctx.moveTo(pad,pad); cctx.lineTo(pad,H-pad); cctx.lineTo(W-pad,H-pad); cctx.stroke();
-    }
-
-    // 초기화
-    resize(); updateInfo();
-
-    // animation frame for UI refresh
-    setInterval(()=>{
-      updateInfo(); drawGrid(); redrawLossCanvas(); drawChart();
-    }, 400);
-
-    // 안전: 초기 시작 위치 기록
-    resetAll();
-  </script>
+drawChart(-1, 1);
+calculateArea();
+</script>
 </body>
 </html>
